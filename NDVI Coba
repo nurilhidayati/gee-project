@@ -60,3 +60,7 @@ var green = vegetation.reduceRegion({
 print(green);
 
 Map.addLayer(greenROI, visParams, 'Max NDVI mosiac');
+
+Export.image.toDrive({image: greenROI.toFloat(),description:"NDVI",region:ROI,scale:30});
+
+https://science.brenchies.com/vegetation/
