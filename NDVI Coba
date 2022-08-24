@@ -1,28 +1,62 @@
-// Define a point of interest. Use the UI Drawing Tools to import a point
-// geometry and name it "point" or set the point coordinates with the
-// ee.Geometry.Point() function as demonstrated here.
-var tg = ee.FeatureCollection("users/hashim6107/study_area_boundaryt");
+// Import the Landsat 8 dataset
 
-// Import the Landsat 8 TOA image collection.
-var l8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_TOA');
+var landsat8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_TOA');
 
-// Get the least cloudy image in 2015.
-var image = ee.Image(
-  l8.filterBounds(tg)
-    .filterDate('2016-01-01', '2017-01-01')
-    .sort('CLOUD_COVER')
-    .first()
-);
+// Import your location of interest
 
+var ROI = ee.FeatureCollection("users/hashim6107/study_area_boundaryt");
 
-// Compute the Normalized Difference Vegetation Index (NDVI).
-var nir = image.select('B5');
-var red = image.select('B4');
-var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI');
+// Filter the Landsat 8 data using your location of interest
 
-// Display the result.
-Map.centerObject(image, 9);
-var ndviParams = {min: -1, max: 1, palette: ['blue', 'white', 'green']};
-Map.addLayer(ndvi, ndviParams, 'NDVI image');
+var spatialFiltered = landsat8.filterBounds(ROI);
 
-var ndvi = image.normalizedDifference(['B5', 'B4']).rename('NDVI');
+// Then filter it using your dates of interest
+
+var temporalFiltered = spatialFiltered.filterDate('2016-01-01', '2017-01-01');
+
+// This is a function to calculate NDVI from a Landsat 8 raster and add it as another layer
+
+var addNDVI = function(image) {
+  var ndvi = image.normalizedDifference(['B5', 'B4']).rename('NDVI');
+  return image.addBands(ndvi);
+};
+
+// Here we apply the function above to our filtered image collection
+
+var withNDVI = temporalFiltered.map(addNDVI);
+
+// Collect peak "greenness" from our images into one map
+
+var greenest = withNDVI.qualityMosaic('NDVI');
+
+// And cut it out to the shape of our region
+
+var greenROI = greenest.clip(ROI);
+
+// Display the result by it's NDVI value
+
+var visParams = {min: -1, max: 1, bands: ['NDVI'], palette: ['blue', 'white', 'green']};
+
+Map.centerObject(ROI, 11);
+
+// Set a threshold for vegetation on the NDVI index
+
+var threshold = 0.2;
+
+// This makes a map with 0 values for non-vegetation, and 1 values for vegetation
+
+var vegetation = greenROI.select('NDVI').gt(threshold);
+
+// This takes the average (mean) value of our vegetation map, aka the Green Coverage
+
+var green = vegetation.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: ROI,
+  scale: 30
+});
+
+// Print out the value of our green coverage in the console so you can write it down!
+
+print(green);
+
+Map.addLayer(greenROI, visParams, 'Max NDVI mosiac');
