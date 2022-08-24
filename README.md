@@ -1,1 +1,3 @@
-# gee-project
+# GIS
+
+Google Earth Engine Scripts
