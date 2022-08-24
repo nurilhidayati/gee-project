@@ -1,0 +1,67 @@
+// Import the Landsat 8 TOA image collection.
+var l8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_TOA');
+
+var ROI = ee.FeatureCollection("users/hashim6107/study_area_boundaryt");
+
+// Get the least cloudy image in 2015.
+var image = ee.Image(
+  l8.filterBounds(ROI)
+    .filterDate('2015-01-01', '2015-12-31')
+    .sort('CLOUD_COVER')
+    .first()
+);
+// Here we apply the function above to our filtered image collection
+
+
+
+
+// Compute the Normalized Difference Vegetation Index (NDVI).
+var nir = image.select('B5');
+var red = image.select('B4');
+var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI');
+
+// Display the result.
+Map.centerObject(image, 9);
+var ndviParams = {min: -1, max: 1, palette: ['blue', 'white', 'green']};
+Map.addLayer(ndvi, ndviParams, 'NDVI'); 
+
+
+
+
+
+
+
+//menghitung NDWI
+// Compute the Normalized Difference Vegetation Index (NDWI).
+var nir = image.select('B5');
+var green = image.select('B3');
+var ndwi = nir.subtract(green).divide(nir.add(green)).rename('NDWI');
+
+// Display the result.
+Map.centerObject(image, 9);
+var ndwiParams = {min: -1, max: 1, palette: ['red', 'white', 'green']};
+Map.addLayer(ndwi, ndviParams, 'NDWI')
+
+//menghitung NDDI
+// Compute the Normalized Difference Vegetation Index (NDVI).
+var nddi = ndvi.subtract(ndwi).divide(ndvi.add(ndwi)).rename('NDDI');
+
+// Display the result.
+Map.centerObject(image, 11);
+var nddiParams = {min: -1, max: 1, palette: [
+    'FFFFFF', 'CE7E45', 'DF923D', 'F1B555', 'FCD163', '99B718'
+  ]};
+Map.addLayer(nddi, nddiParams, 'NDDI')
+
+
+
+// And cut it out to the shape of our region
+
+var greenROI = image.clip(ROI);
+
+
+
+// Print out the value of our green coverage in the console so you can write it down!
+
+print(nddi);
+
