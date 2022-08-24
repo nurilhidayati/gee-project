@@ -1,0 +1,124 @@
+// cloudmask for TOA data
+var toa = function(image) {
+ var qa = image.select('BQA');
+ var mask = qa.bitwiseAnd(1 << 4).eq(0);
+ return image.updateMask(mask);
+};
+
+// cloudmask for SR data
+var sr = function(image) {
+ var qa = image.select('pixel_qa');
+ var mask = qa.bitwiseAnd(1 << 3)
+   .or(qa.bitwiseAnd(1 << 5))
+ return image.updateMask(mask.not());
+};
+
+
+var sowSeason = function (collection) {
+ return collection.filter(ee.Filter.calendarRange(2013, 2013, 'year'))
+                  .filter(ee.Filter.calendarRange(10, 12, 'month'))
+};
+
+
+
+var COLLECTION = ee.Dictionary({
+ 'L8': {
+   'TOA': ee.ImageCollection('LANDSAT/LC08/C01/T1_TOA'),
+   'SR': ee.ImageCollection('LANDSAT/LC08/C01/T1_SR'),
+   'TIR': ['B10','B11']
+ }
+});
+
+
+
+var sowCol = function(landsat, geometry, use_ndvi) {
+
+ // load TOA Radiance/Reflectance
+ var collection_dict = ee.Dictionary(COLLECTION.get(landsat));
+
+ var landsatTOA = ee.ImageCollection(collection_dict.get('TOA'))
+                    .filterBounds(geometry)
+                    .map(toa);
+               
+             
+ // load Surface Reflectance collection for NDVI
+ var landsatSR = ee.ImageCollection(collection_dict.get('SR'))
+               .filterBounds(geometry)
+               .map(sr)
+
+ // combine collections
+ // all channels from surface reflectance collection
+ // except tir channels: from TOA collection
+ // select TIR bands
+ var tir = ee.List(collection_dict.get('TIR'));
+ var landsatALL = sowSeason(landsatSR).combine(sowSeason(landsatTOA.select(tir)), true);
+ 
+ return landsatALL;
+};
+
+
+var satellite = 'L8';
+var use_ndvi = false;
+var ROI = ee.FeatureCollection("users/hashim6107/study_area_boundaryt");
+var LandsatSowCol = sowCol(satellite, ROI, use_ndvi)
+
+
+
+var addNDVI = function(image) {
+ //NDVI = (NIR - RED) / (NIR + RED)
+ var ndvi = image.normalizedDifference(['B5', 'B4']).rename('NDVI');
+ return image.addBands(ndvi)
+             .copyProperties(image, ["system:time_start"]);
+};
+
+
+var addNDWI = function(image) {
+ //NDWI = (Green - NIR) / (Green + NIR )
+ var ndwi = image.normalizedDifference(['B3', 'B5']).rename('NDWI');
+ return image.addBands(ndwi)
+             .copyProperties(image, ["system:time_start"]);
+};
+
+var addNDDI = function(image) {
+ //NDDI = (NDVI - NDWI) / (NDVI + NDWI)
+ var nddi = image.expression(
+ '(NDVI - NDWI) / (NDVI + NDWI)',{
+ 'NDVI'  : image.select('NDVI'),
+ 'NDWI' : image.select('NDWI')});
+ return image.addBands(nddi.rename('NDDI'))
+             .copyProperties(image, ["system:time_start"]);
+};
+
+
+var newCol = LandsatSowCol.map(addNDVI)
+                         .map(addNDWI)
+                         .map(addNDDI).select(['NDVI', 'NDWI', 'NDDI'])
+
+
+
+var years = ee.List.sequence(2013, 2021);
+var sowingMonths = ee.List.sequence(10, 12);
+var growingMonths = ee.List.sequence(1, 4);
+
+
+// Map over the years and create a monthly average collection for the sowing season
+var monthly_Sowing_Avg = function (sowCol){
+ return ee.ImageCollection.fromImages(
+   years.map(function(year) {
+     return sowingMonths.map(function(month) {
+       return sowCol
+       .filter(ee.Filter.calendarRange(year, year, 'year'))
+       .filter(ee.Filter.calendarRange(month, month, 'month'))
+       .mean()
+       .set({'month': month, 'year': year});
+ });
+}).flatten())}
+
+
+
+var monthlyCol = monthly_Sowing_Avg(newCol)
+var NDDI_Oct2013  = monthlyCol.first().select('NDDI')
+var nddiParams = {min: -1, max: 1, palette: ['green', 'yellow', 'red']};
+Map.addLayer(NDDI_Oct2013.clip(ROI), nddiParams, 'NDDI Oct 2013');
+
+print(NDDI_Oct2013);
