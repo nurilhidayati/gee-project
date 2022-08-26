@@ -4,10 +4,8 @@
 // NIR is B8, 835.1 nm
 
 //Step 1: Access your boundary-defining geometry
-var extent_lebanon = ee.FeatureCollection("FAO/GAUL/2015/level0")
-                  .filter(ee.Filter.eq('ADM0_NAME', 'Lebanon')); //filter for entry that equals the UN country name 'Lebanon'
-
-
+var extent_lebanon = ee.FeatureCollection("users/nurilassajdah/mojokerto")
+                  
 
 //Step 2: Access the Sentinel-2 Level-2A data and filter it for all the the images of the year 2020 that lie within the geometries boundaries. Keep only the relevant bands and filter for cloud coverage.
 var s2a = ee.ImageCollection('COPERNICUS/S2_SR')
@@ -79,3 +77,4 @@ print(nddi, 'NDDI Lebanon July 2020 V1')
 // Display the result.
 var nddiParams = {min: -1, max: 1, palette: ['green', 'yellow', 'red']};
 Map.addLayer(nddi, nddiParams, 'NDDI Lebanon July 2020 V1');
+
