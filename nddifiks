@@ -1,16 +1,17 @@
+CITRA SENTINEL 2A
 // Compute Normalized Difference Vegetation Index over S2-L2 product.
 // NDVI = (NIR - RED) / (NIR + RED), where
 // RED is B4, 664.5 nm
 // NIR is B8, 835.1 nm
 
 //Step 1: Access your boundary-defining geometry
-var extent_lebanon = ee.FeatureCollection("users/nurilassajdah/mojokerto")
+var lamongan = ee.FeatureCollection("users/nurilassajdah/lamongan")
                   
 
 //Step 2: Access the Sentinel-2 Level-2A data and filter it for all the the images of the year 2020 that lie within the geometries boundaries. Keep only the relevant bands and filter for cloud coverage.
 var s2a = ee.ImageCollection('COPERNICUS/S2_SR')
-                  .filterBounds(extent_lebanon)
-                  .filterDate('2020-07-01', '2020-07-31')
+                  .filterBounds(lamongan)
+                  .filterDate('2019-06-01', '2019-06-30')
                   .select('B1','B2','B3','B4','B5','B6','B7','B8','B8A','B9','B11','B12')
                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10));
 
@@ -21,11 +22,8 @@ Map.centerObject(s2a,9)
 
 //Step 3: Create a single Image by reducing by Median and clip it to the extent of the geometry
 var s2a_median = s2a.median()
-                    .clip(extent_lebanon);
-
-//Print your Image to your console tab to inspect it
-print(s2a_median, 'Median reduced Image Lebanon July 2020');
-
+                    .clip(lamongan);
+                  
 //To do so, we will need to write a short function which is adapted from one of the example scripts included in the GEE; browse Examples -> Cloud Masking -> Sentinel2
 function maskS2clouds(image) {
   var qa = image.select('QA60')
@@ -44,37 +42,60 @@ function maskS2clouds(image) {
       .copyProperties(image, ["system:time_start"])
 }
 
+//Print your Image to your console tab to inspect it
+print(s2a_median, 'Citra Sentinel Lamongan July 2020');
+var RGBTrue = s2a.select(['B4', 'B3', 'B2']);
+var RGBparam = {min:0, max:3000};
+//Map.addLayer(RGBTrue, RGBparam,'Citra Sentinel Lamongan July 2020' )
+
+
 //Step 4: Calculate the NDVI manually: NDVI = (B8 - B4) / (B8 + B4)
-//this can be achieved using either simple band operations, .expression or .normalizedDifference
-//Variant 1: Simple band operations
 var nir = s2a_median.select('B8');
 var red = s2a_median.select('B4');
 var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI');
-print(ndvi, 'NDVI Lebanon July 2020 V1')
+print(ndvi, 'NDVI Lamongan July 2020')
 
-// Display the result.
+// Display the NDVI result.
 var ndviParams = {min: -1, max: 1, palette: ['blue', 'white', 'green']};
-Map.addLayer(ndvi, ndviParams, 'NDVI Lebanon July 2020 V1');
+//Map.addLayer(ndvi, ndviParams, 'NDVI Lamongan July 2020');
 
-//Step 4: Calculate the NDVI manually: NDWI = (B8 - B4) / (B8 + B4)
+//Step 5: Calculate the NDWI manually: NDWI = (B8 - B11) / (B8 + B11)
 //this can be achieved using either simple band operations, .expression or .normalizedDifference
 //Variant 1: Simple band operations
 var nir = s2a_median.select('B8');
 var swir = s2a_median.select('B11');
 var ndwi = nir.subtract(swir).divide(nir.add(swir)).rename('NDWI');
-print(ndwi, 'NDWI Lebanon July 2020 V1')
+print(ndwi, 'NDWI Lamongan July 2020')
 
-// Display the result.
+// Display the NDWI result.
 var ndwiParams = {min: -1, max: 1, palette: ['red', 'yellow', 'blue']};
-Map.addLayer(ndwi, ndwiParams, 'NDWI Lebanon July 2020 V1');
+//Map.addLayer(ndwi, ndwiParams, 'NDWI Lamongan July 2020');
 
-//Step 4: Calculate the NDDI manually: NDWI = (B8 - B4) / (B8 + B4)
-//this can be achieved using either simple band operations, .expression or .normalizedDifference
-//Variant 1: Simple band operations
+//Step 4: Calculate the NDDI manually: NDDI = (NDVI - NDWI) / (NDVI + NDWI)
 var nddi = ndvi.subtract(ndwi).divide(ndvi.add(ndwi)).rename('NDDI');
-print(nddi, 'NDDI Lebanon July 2020 V1')
+print(nddi, 'NDDI Lamongan July 2020')
 
-// Display the result.
-var nddiParams = {min: -1, max: 1, palette: ['green', 'yellow', 'red']};
-Map.addLayer(nddi, nddiParams, 'NDDI Lebanon July 2020 V1');
+// Menghitung Luasan NDDI
+var mergedAllFunction = function(image) {
+ var thres1 = nddi.gt(-0.05).and(nddi.lt(0)).rename('thres1')
+ var thres2=nddi.gt(0.01).and(nddi.lt(0.149)).rename('thres2')
+ var thres3=nddi.gt(0.15).and(nddi.lt(0.249)).rename('thres3')
+ var thres4=nddi.gt(0.25).and(nddi.lte(1)).rename('thres4')
+ return image.addBands(nddi).addBands([thres1,thres2,thres3,thres4]);
+}
 
+var merged = mergedAllFunction(s2a_median);
+var areas = merged
+    .select(['thres1', 'thres2', 'thres3', 'thres4'])
+    .multiply(ee.Image.pixelArea())
+    .reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: lamongan,  // a geometry
+      scale: 10,   // scale = 10 for sentinel-2 'red' band
+      maxPixels: 1e9  
+    });
+print(areas,'square meters')
+
+// Display the NDDI result.
+var nddiParams = {min: -1, max: 1, palette: ['058449','00ff00','ffff00','ffa500','bb0000']};
+Map.addLayer(nddi, nddiParams, 'NDDI Lamongan July 2020');
